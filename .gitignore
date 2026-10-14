@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dev-dist/
+*.local
+.DS_Store
+*.sqlite
+*.sqlite-*
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+*.htpasswd
+
+# Local Claude Code setup
+.claude/
+
+# Local pointer to the private session log
+docs/SESSION-LOG.md

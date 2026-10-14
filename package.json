@@ -1,0 +1,39 @@
+{
+  "name": "subfeed",
+  "private": true,
+  "license": "MIT",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A distraction-free YouTube subscriptions reader",
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c blue,green \"vite\" \"tsx watch server/index.ts\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "preview": "npm run build && npm run start",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "hash-password": "node scripts/hash-password.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "dexie": "^4.0.10",
+    "dexie-react-hooks": "^1.1.7",
+    "fast-xml-parser": "^4.5.1",
+    "hono": "^4.6.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^2.1.8"
+  }
+}

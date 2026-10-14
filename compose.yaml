@@ -1,0 +1,44 @@
+# Subfeed behind your own reverse proxy (Caddy, Traefik, nginx...), which
+# terminates HTTPS and forwards to 127.0.0.1:8787.
+#
+#   cp .env.example .env              # then fill in both values
+#   docker build -t subfeed .
+#   docker compose up -d
+#
+# If the proxy runs on another host, change the port binding to an address
+# only that proxy can reach. Never expose 8787 to the internet directly:
+# it speaks plain HTTP.
+
+name: subfeed
+
+services:
+  subfeed:
+    image: subfeed:latest
+    container_name: subfeed
+    restart: unless-stopped
+    environment:
+      SUBFEED_PASSWORD_HASH: ${SUBFEED_PASSWORD_HASH:?run npm run hash-password and put the result in .env}
+      SUBFEED_ORIGIN: ${SUBFEED_ORIGIN:?set the public https address in .env}
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - subfeed_data:/data # db.sqlite plus its -wal and -shm files
+    # Nothing but /data needs to be writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 100
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  subfeed_data:
