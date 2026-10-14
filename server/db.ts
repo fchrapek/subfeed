@@ -293,6 +293,16 @@ export function listChannelsMissingDurations(sinceMs: number, limit: number): st
   return rows.map((r) => r.channelId)
 }
 
+export function countMissingDurations(channelId: string, sinceMs: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM videos
+       WHERE channelId = ? AND durationSec IS NULL AND (isShort IS NULL OR isShort = 0) AND publishedAt >= ?`,
+    )
+    .get(channelId, sinceMs) as { n: number }
+  return row.n
+}
+
 /** Fill in lengths that are still unknown; known lengths are left alone. */
 export function setDurations(channelId: string, lengths: Map<string, number>): void {
   const update = db.prepare(

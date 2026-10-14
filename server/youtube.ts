@@ -255,10 +255,12 @@ export function clockToSeconds(text: string): number | null {
 
 /**
  * videoId -> length in seconds, read from the ytInitialData JSON of a channel's
- * /videos page. Each video is a lockupViewModel (or, in older layouts, a
- * videoRenderer); its length is the first clock-like text inside it, which is
- * the thumbnail badge.
+ * /videos or /streams page. Each video is a lockupViewModel (or, in older
+ * layouts, a videoRenderer); its length is the first clock-like text inside it,
+ * which is the thumbnail badge.
  */
+const VIDEO_TILE_KEYS = ['lockupViewModel', 'videoRenderer', 'gridVideoRenderer'] as const
+
 export function parseChannelVideoLengths(html: string): Map<string, number> {
   const lengths = new Map<string, number>()
   const start = html.indexOf('var ytInitialData = ')
@@ -280,16 +282,18 @@ export function parseChannelVideoLengths(html: string): Map<string, number> {
     }
     return null
   }
+  // Only video tiles count; a channel trailer or header elsewhere on the page
+  // also carries a videoId, and must not swallow the list around it.
   const walk = (node: unknown): void => {
     if (!node || typeof node !== 'object') return
     if (Array.isArray(node)) return node.forEach(walk)
     const obj = node as Record<string, unknown>
-    const id = obj.contentId ?? obj.videoId
-    if (typeof id === 'string' && VIDEO_ID_RE.test(id) && !lengths.has(id)) {
-      const sec = firstClock(obj)
-      if (sec != null) {
-        lengths.set(id, sec)
-        return
+    for (const key of VIDEO_TILE_KEYS) {
+      const tile = obj[key] as Record<string, unknown> | undefined
+      const id = tile?.contentId ?? tile?.videoId
+      if (typeof id === 'string' && VIDEO_ID_RE.test(id) && !lengths.has(id)) {
+        const sec = firstClock(tile)
+        if (sec != null) lengths.set(id, sec)
       }
     }
     Object.values(obj).forEach(walk)
@@ -298,10 +302,17 @@ export function parseChannelVideoLengths(html: string): Map<string, number> {
   return lengths
 }
 
-export function fetchChannelVideoLengths(channelId: string): Promise<Map<string, number>> {
-  return cached(`lengths:${channelId}`, LENGTHS_TTL, async () =>
-    parseChannelVideoLengths(await fetchText(`https://www.youtube.com/channel/${channelId}/videos`)),
-  )
+/**
+ * Lengths from one tab of a channel: `videos` (uploads) or `streams` (past live
+ * streams, which never show up under videos). An empty result is an error, not
+ * an answer, so a thinned-out page is retried next time instead of being cached.
+ */
+export function fetchChannelVideoLengths(channelId: string, tab: 'videos' | 'streams'): Promise<Map<string, number>> {
+  return cached(`lengths:${tab}:${channelId}`, LENGTHS_TTL, async () => {
+    const lengths = parseChannelVideoLengths(await fetchText(`https://www.youtube.com/channel/${channelId}/${tab}`))
+    if (lengths.size === 0) throw new UpstreamError(`No video lengths on the ${tab} page.`)
+    return lengths
+  })
 }
 
 export function isoToSeconds(iso: string): number | null {

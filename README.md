@@ -110,9 +110,8 @@ original product brief.
 
 ## Known limitations
 
-- Durations are scraped from each channel's public video list (with the watch page as a
-  fallback), the most fragile part. Live streams and premieres stay without one; unknown
-  durations are never hidden.
+- Durations are scraped from each channel's public video and live-stream lists (with the
+  watch page as a fallback), the most fragile part. Unknown durations are never hidden.
 - Single user by design.
 - Videos published over a year ago are dropped unless they are in Watch later or a playlist.
 

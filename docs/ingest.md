@@ -30,8 +30,9 @@ RSS provides neither, so enrich each new `videoId` once and cache the result:
 - **Duration, first choice:** the channel's `/videos` page. Its `ytInitialData` lists the ~30
   newest long-form videos, each (`lockupViewModel`) with a length badge like `57:59` on the
   thumbnail. One request fills many videos, and it still answers datacenter IPs that YouTube
-  asks to sign in. Fetched only for channels with recent videos of unknown length, at most
-  once an hour per channel.
+  asks to sign in. Past live streams only appear on the `/streams` tab, which is read next
+  when `/videos` didn't cover everything. Fetched only for channels with recent videos of
+  unknown length, at most once an hour per tab; a page with no lengths isn't cached.
 - **Duration, fallback:** the watch page's `lengthSeconds`, `approxDurationMs` or
   `<meta itemprop="duration">` (ISO 8601). From many datacenter IPs this page answers
   `LOGIN_REQUIRED` without a length.
@@ -46,7 +47,7 @@ RSS provides neither, so enrich each new `videoId` once and cache the result:
 
 This scraping is the most fragile surface in the app. It runs server-side in the background
 after each refresh (`server/refresh.ts`), and the selectors live in `server/youtube.ts`.
-Live streams and premieres have no length badge; their duration stays unknown.
+Upcoming premieres and live-now streams have no length badge yet; they get one later.
 
 ## Outbound safety
 Every request goes through one guard in `server/youtube.ts`: https only, hosts `youtube.com`,

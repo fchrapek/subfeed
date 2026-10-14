@@ -51,15 +51,20 @@ const MAX_CHANNEL_LISTS = 25
  * badge can't trigger a fetch on every refresh.
  */
 async function fillLengthsFromChannelLists(): Promise<void> {
-  const channels = store.listChannelsMissingDurations(Date.now() - LENGTH_LOOKBACK_MS, MAX_CHANNEL_LISTS)
+  const since = Date.now() - LENGTH_LOOKBACK_MS
+  const channels = store.listChannelsMissingDurations(since, MAX_CHANNEL_LISTS)
   let i = 0
   const worker = async () => {
     while (i < channels.length) {
       const channelId = channels[i++]
-      try {
-        store.setDurations(channelId, await fetchChannelVideoLengths(channelId))
-      } catch {
-        // no lengths this time; the per-video probe below may still find some
+      // Uploads first; past live streams only appear on the streams tab.
+      for (const tab of ['videos', 'streams'] as const) {
+        if (store.countMissingDurations(channelId, since) === 0) break
+        try {
+          store.setDurations(channelId, await fetchChannelVideoLengths(channelId, tab))
+        } catch {
+          // nothing usable this time; retried on a later refresh
+        }
       }
     }
   }

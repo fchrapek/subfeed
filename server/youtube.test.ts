@@ -207,6 +207,15 @@ describe('channel video lengths', () => {
     expect(Object.fromEntries(lengths)).toEqual({ plN7JMbadRg: 3479, v9QtM6qnG50: 3723 })
   })
 
+  it('is not thrown off by a video id outside the tiles, like a channel trailer', () => {
+    const html = page({
+      header: { channelVideoPlayerRenderer: { videoId: 'trailer0000', title: 'Trailer' } },
+      currentVideoEndpoint: { watchEndpoint: { videoId: 'trailer0000' } },
+      contents: { items: [lockup('plN7JMbadRg', '57:59'), lockup('v9QtM6qnG50', '19:03')] },
+    })
+    expect(Object.fromEntries(parseChannelVideoLengths(html))).toEqual({ plN7JMbadRg: 3479, v9QtM6qnG50: 1143 })
+  })
+
   it('returns nothing for a page without the data blob', () => {
     expect(parseChannelVideoLengths('<html>sign in</html>').size).toBe(0)
     expect(parseChannelVideoLengths('<script>var ytInitialData = {broken;</script>').size).toBe(0)
