@@ -9,8 +9,10 @@ All ingestion uses **public pages only** — no account, no API key, no quota.
   - `title` → title
   - `author/name` → channel name
   - `published` → publish time (ISO 8601)
-  - `media:group/media:thumbnail@url` → thumbnail
-- **The feed gives no duration and no Shorts flag** — see enrichment below.
+  - `media:group/media:thumbnail@url` → thumbnail (only `*.ytimg.com` is accepted)
+  - `link[rel=alternate]@href` → **Shorts flag**: Shorts link to `/shorts/<id>`, other
+    videos to `/watch?v=<id>`
+- **The feed gives no duration** — see enrichment below.
 - Dedup by `videoId`. Every video appears exactly once in the merged feed.
 
 ## Channel resolution
@@ -27,16 +29,26 @@ Accept any of: channel ID, channel URL, handle, custom/legacy URL.
 RSS provides neither, so enrich each new `videoId` once and cache the result:
 - **Duration:** fetch the watch page and read `lengthSeconds` from the embedded player
   response, or `<meta itemprop="duration">` (ISO 8601). Convert to seconds.
-- **Shorts:** request `https://www.youtube.com/shorts/<videoId>` — a Short returns 200 and
-  stays on `/shorts/…`; a normal video redirects to `/watch`. (Duration ≤ ~60s is a weak
-  secondary signal only.)
+- **Shorts:** the feed's link (above) is authoritative. Only when it's missing, request
+  `https://www.youtube.com/shorts/<videoId>`: a Short returns 200, a normal video redirects
+  to `/watch`. Any other redirect (consent or sign-in wall) proves nothing. Duration ≤ ~60s
+  is a weak last resort.
+- **EU consent wall:** from an EU IP, youtube.com first redirects to `consent.youtube.com`.
+  Every request sends the cookie `SOCS=CAI` ("reject all"), which skips it.
 - **Degrade gracefully:** if duration/Shorts can't be determined, treat duration as unknown
   and **do not** hide the video. Never drop a real upload because enrichment failed.
 
-This scraping is the most fragile surface in the app — isolate it behind `/api/video/:id/meta`,
-cache permanently per video, and keep selectors easy to update.
+This scraping is the most fragile surface in the app. It runs server-side in the background
+after each refresh (`server/refresh.ts`), and the selectors live in `server/youtube.ts`.
+Some datacenter IP ranges get watch pages without `lengthSeconds`; durations then stay unknown.
+
+## Outbound safety
+Every request goes through one guard in `server/youtube.ts`: https only, hosts `youtube.com`,
+`www.youtube.com` and `m.youtube.com` only (redirects re-checked, at most 3), one 10 second
+deadline, 5 MB body cap. Pasted input is rebuilt into a canonical YouTube URL or refused.
 
 ## Caching & politeness
-- Cache feed JSON per channel for the refresh interval (default 30 min).
-- Cache per-video duration/Shorts permanently (it never changes).
-- Set a normal browser-like User-Agent; fetch lazily (only enrich videos about to be shown).
+- Feeds are cached per channel for 5 minutes and fetched four at a time; a refresh within a
+  minute of the last one is skipped.
+- Per-video enrichment is cached for a day in memory and stored in SQLite once found.
+- A normal browser-like User-Agent is sent.

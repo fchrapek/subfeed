@@ -1,41 +1,45 @@
-# Architecture & Stack (recommended)
+# Architecture & Stack
 
-A builder may substitute equivalents, but these choices match the constraints:
+These choices match the constraints:
 single-user, self-hosted, installable, offline-browsable, no Google account.
 
 ## Why a server is unavoidable
 YouTube's RSS feed endpoint and channel pages do **not** send permissive CORS headers,
 so the browser cannot fetch them directly. A thin server-side proxy is required for feed
-fetch, channel resolution, and Shorts/duration enrichment. Everything else is client-side.
+fetch, channel resolution, and Shorts/duration enrichment.
 
-## Recommended shape
+## Shape
 - **Language:** TypeScript end to end.
 - **Client:** Vite + React SPA. Installable + offline via `vite-plugin-pwa` (service worker
   caches the app shell and lets previously loaded data render offline).
-- **Server:** one small Node process (Hono or Express) that (a) serves the built client and
+- **Server:** one small Node process (Hono) that (a) serves the built client and
   (b) exposes `/api/*`. Single process → trivial to self-host / Dockerise.
-- **Persistence:** IndexedDB on the client (Dexie wrapper) for channels, watched state, queue,
-  settings, and the cached feed. The server is stateless except for a feed/enrichment cache.
-
-(Equivalent single-process full-stack frameworks — SvelteKit, Next.js, Remix — are fine
-substitutes; the split below still applies.)
+- **Persistence:** SQLite on the server (`node:sqlite`) is the source of truth. The client
+  mirrors it into IndexedDB (Dexie) so the UI is reactive and loaded data stays browsable
+  offline.
+- **Auth:** one password (scrypt hash in env), random sessions in SQLite. See the README's
+  security model.
 
 ## Responsibility split
-- **Server owns:** outbound network. Resolve channel → ID, fetch + parse RSS to JSON,
-  enrich videos with duration/Shorts flag, cache responses. No user state.
-- **Client owns:** all user state (channels, watched, queue, settings, budget usage),
-  feed merge/filter/sort, UI, the embedded player, PWA/offline.
+- **Server owns:** outbound network (YouTube only), all user state and its rules (watched,
+  budget, resume, playlists), sessions.
+- **Client owns:** feed filtering and sorting for display, UI, the embedded player, PWA/offline.
 
-## Suggested API
-- `POST /api/channels/resolve` — body: raw URL/handle/ID → `{ channelId, title }` or an
-  error telling the UI to ask for the canonical channel ID.
-- `GET  /api/feed?channelId=...` — recent uploads as JSON (cached for the refresh interval).
-- `GET  /api/video/:id/meta` — `{ durationSec, isShort }` (cached permanently per video).
+## API (as built)
+All under `/api`, all but login need a session; writes must be same-origin JSON.
+- `POST /auth/login`, `POST /auth/logout`, `POST /auth/logout-all`
+- `GET /state`: the full snapshot the client mirrors
+- `POST /channels` (URL, handle or id) · `DELETE /channels/:id` · `POST /refresh`
+- `POST /watch/watched` · `POST /watch/unwatched` · `POST /watch/position`
+- `POST /queue` · `DELETE /queue/:videoId`
+- `POST /playlists` · `PATCH /playlists/:id` · `DELETE /playlists/:id`
+- `POST /playlists/:id/items` · `DELETE /playlists/:id/items/:videoId`
+- `PUT /settings` · `POST /budget/override`
 
 ## Suggested structure
 ```
-/server   feed proxy, channel resolution, enrichment + cache
-/client   React app, IndexedDB store, player, PWA
+/server   API, auth, SQLite store, feed fetch, channel resolution, enrichment
+/client   React app, IndexedDB mirror, player, PWA
 /shared   TS types shared across both (Video, Channel, Settings…)
 ```
 
