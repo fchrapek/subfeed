@@ -85,7 +85,7 @@ Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 - **Server** (`server/`, Hono on Node): resolves channels, fetches and parses each channel's
   Atom feed (`youtube.com/feeds/videos.xml?channel_id=…`), detects Shorts from the feed's
-  `/shorts/` links, fills in durations from public watch pages, and owns the watched and budget
+  `/shorts/` links, fills in durations from each channel's public video list, and owns the watched and budget
   rules. State lives in **SQLite** (`node:sqlite`).
 - **Client** (`client/`, React PWA): every change goes through the API; the returned state is
   mirrored into IndexedDB (Dexie), so the UI is reactive and stays browsable offline.
@@ -110,8 +110,9 @@ original product brief.
 
 ## Known limitations
 
-- Durations come from scraping public watch pages, the most fragile part. Some hosting
-  providers' IP ranges get pages without it; unknown durations are never hidden.
+- Durations are scraped from each channel's public video list (with the watch page as a
+  fallback), the most fragile part. Live streams and premieres stay without one; unknown
+  durations are never hidden.
 - Single user by design.
 - Videos published over a year ago are dropped unless they are in Watch later or a playlist.
 

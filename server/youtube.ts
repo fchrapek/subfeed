@@ -237,6 +237,73 @@ export function fetchChannelFeed(channelId: string): Promise<Video[]> {
 // Enrichment: duration + Shorts (the brittle part; degrades gracefully to null)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Lengths from a channel's video list. One page gives the ~30 newest long-form
+// videos with their length badge, and unlike the watch page it still answers
+// datacenter IPs that YouTube asks to sign in.
+// ---------------------------------------------------------------------------
+
+const CLOCK_RE = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/
+const LENGTHS_TTL = 60 * 60 * 1000
+
+/** "1:02:03" / "57:59" -> seconds, or null. */
+export function clockToSeconds(text: string): number | null {
+  const m = CLOCK_RE.exec(text.trim())
+  if (!m) return null
+  return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3])
+}
+
+/**
+ * videoId -> length in seconds, read from the ytInitialData JSON of a channel's
+ * /videos page. Each video is a lockupViewModel (or, in older layouts, a
+ * videoRenderer); its length is the first clock-like text inside it, which is
+ * the thumbnail badge.
+ */
+export function parseChannelVideoLengths(html: string): Map<string, number> {
+  const lengths = new Map<string, number>()
+  const start = html.indexOf('var ytInitialData = ')
+  if (start === -1) return lengths
+  const end = html.indexOf(';</script>', start)
+  let data: unknown
+  try {
+    data = JSON.parse(html.slice(start + 'var ytInitialData = '.length, end))
+  } catch {
+    return lengths
+  }
+  const firstClock = (node: unknown): number | null => {
+    if (typeof node === 'string') return clockToSeconds(node)
+    if (node && typeof node === 'object') {
+      for (const value of Object.values(node)) {
+        const found = firstClock(value)
+        if (found != null) return found
+      }
+    }
+    return null
+  }
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(walk)
+    const obj = node as Record<string, unknown>
+    const id = obj.contentId ?? obj.videoId
+    if (typeof id === 'string' && VIDEO_ID_RE.test(id) && !lengths.has(id)) {
+      const sec = firstClock(obj)
+      if (sec != null) {
+        lengths.set(id, sec)
+        return
+      }
+    }
+    Object.values(obj).forEach(walk)
+  }
+  walk(data)
+  return lengths
+}
+
+export function fetchChannelVideoLengths(channelId: string): Promise<Map<string, number>> {
+  return cached(`lengths:${channelId}`, LENGTHS_TTL, async () =>
+    parseChannelVideoLengths(await fetchText(`https://www.youtube.com/channel/${channelId}/videos`)),
+  )
+}
+
 export function isoToSeconds(iso: string): number | null {
   const m = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/)
   if (!m) return null

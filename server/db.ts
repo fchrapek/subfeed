@@ -274,14 +274,41 @@ export function listPendingEnrichment(limit: number): string[] {
   return rows.map((r) => r.videoId)
 }
 
-export function setEnrichment(videoId: string, durationSec: number | null, isShort: boolean | null): void {
-  // The feed's /shorts/ link is authoritative; the page probe only fills a gap.
-  db.prepare('UPDATE videos SET durationSec = ?, isShort = COALESCE(isShort, ?), enrichedAt = ? WHERE videoId = ?').run(
-    durationSec,
-    bool(isShort),
-    Date.now(),
-    videoId,
+/**
+ * Channels with recent non-Short videos whose length is still unknown. Their
+ * video list page fills those in (the per-video watch page often comes back
+ * without a length from datacenter IPs).
+ */
+export function listChannelsMissingDurations(sinceMs: number, limit: number): string[] {
+  const rows = db
+    .prepare(
+      `SELECT v.channelId, MAX(v.publishedAt) AS newest FROM videos v
+       JOIN channels c ON c.id = v.channelId
+       WHERE v.durationSec IS NULL AND (v.isShort IS NULL OR v.isShort = 0) AND v.publishedAt >= ?
+       GROUP BY v.channelId
+       ORDER BY newest DESC
+       LIMIT ?`,
+    )
+    .all(sinceMs, limit) as { channelId: string }[]
+  return rows.map((r) => r.channelId)
+}
+
+/** Fill in lengths that are still unknown; known lengths are left alone. */
+export function setDurations(channelId: string, lengths: Map<string, number>): void {
+  const update = db.prepare(
+    'UPDATE videos SET durationSec = ? WHERE videoId = ? AND channelId = ? AND durationSec IS NULL',
   )
+  tx(() => {
+    for (const [videoId, sec] of lengths) update.run(sec, videoId, channelId)
+  })
+}
+
+export function setEnrichment(videoId: string, durationSec: number | null, isShort: boolean | null): void {
+  // The feed's /shorts/ link is authoritative, and a length already known (from
+  // the channel's video list) is kept; the page probe only fills gaps.
+  db.prepare(
+    'UPDATE videos SET durationSec = COALESCE(?, durationSec), isShort = COALESCE(isShort, ?), enrichedAt = ? WHERE videoId = ?',
+  ).run(durationSec, bool(isShort), Date.now(), videoId)
 }
 
 // ---- watch state + queue ----

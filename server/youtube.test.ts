@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { extractChannelId, isoToSeconds, parseDuration, parseFeed, scrapeChannelId, toChannelPageUrl } from './youtube'
+import {
+  clockToSeconds,
+  extractChannelId,
+  isoToSeconds,
+  parseChannelVideoLengths,
+  parseDuration,
+  parseFeed,
+  scrapeChannelId,
+  toChannelPageUrl,
+} from './youtube'
 
 const FEED = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
@@ -157,5 +166,49 @@ describe('parseFeed hardening', () => {
       FEED.replace('https://i.ytimg.com/vi/abc123XYZ_-/hqdefault.jpg', 'https://tracker.example/pixel.gif'),
     )
     expect(videos[0].thumbnailUrl).toBe('https://i.ytimg.com/vi/abc123XYZ_-/hqdefault.jpg')
+  })
+})
+
+describe('channel video lengths', () => {
+  const lockup = (id: string, badge: string) => ({
+    richItemRenderer: {
+      content: {
+        lockupViewModel: {
+          contentId: id,
+          contentImage: {
+            thumbnailViewModel: {
+              overlays: [
+                { thumbnailBottomOverlayViewModel: { badges: [{ thumbnailBadgeViewModel: { text: badge } }] } },
+              ],
+            },
+          },
+          rendererContext: { commandContext: { onTap: { innertubeCommand: { watchEndpoint: { videoId: id } } } } },
+        },
+      },
+    },
+  })
+  const page = (data: unknown) => `<script>var ytInitialData = ${JSON.stringify(data)};</script><script>more</script>`
+
+  it('reads clock text', () => {
+    expect(clockToSeconds('57:59')).toBe(3479)
+    expect(clockToSeconds('1:02:03')).toBe(3723)
+    expect(clockToSeconds('0:45')).toBe(45)
+    expect(clockToSeconds('LIVE')).toBeNull()
+    expect(clockToSeconds('12:3')).toBeNull()
+  })
+
+  it('maps each video in the list to its length badge', () => {
+    const html = page({
+      contents: {
+        items: [lockup('plN7JMbadRg', '57:59'), lockup('v9QtM6qnG50', '1:02:03'), lockup('liveStream0', 'LIVE')],
+      },
+    })
+    const lengths = parseChannelVideoLengths(html)
+    expect(Object.fromEntries(lengths)).toEqual({ plN7JMbadRg: 3479, v9QtM6qnG50: 3723 })
+  })
+
+  it('returns nothing for a page without the data blob', () => {
+    expect(parseChannelVideoLengths('<html>sign in</html>').size).toBe(0)
+    expect(parseChannelVideoLengths('<script>var ytInitialData = {broken;</script>').size).toBe(0)
   })
 })

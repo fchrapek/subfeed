@@ -27,8 +27,14 @@ Accept any of: channel ID, channel URL, handle, custom/legacy URL.
 
 ## Duration & Shorts (the brittle part — no Data API)
 RSS provides neither, so enrich each new `videoId` once and cache the result:
-- **Duration:** fetch the watch page and read `lengthSeconds` from the embedded player
-  response, or `<meta itemprop="duration">` (ISO 8601). Convert to seconds.
+- **Duration, first choice:** the channel's `/videos` page. Its `ytInitialData` lists the ~30
+  newest long-form videos, each (`lockupViewModel`) with a length badge like `57:59` on the
+  thumbnail. One request fills many videos, and it still answers datacenter IPs that YouTube
+  asks to sign in. Fetched only for channels with recent videos of unknown length, at most
+  once an hour per channel.
+- **Duration, fallback:** the watch page's `lengthSeconds`, `approxDurationMs` or
+  `<meta itemprop="duration">` (ISO 8601). From many datacenter IPs this page answers
+  `LOGIN_REQUIRED` without a length.
 - **Shorts:** the feed's link (above) is authoritative. Only when it's missing, request
   `https://www.youtube.com/shorts/<videoId>`: a Short returns 200, a normal video redirects
   to `/watch`. Any other redirect (consent or sign-in wall) proves nothing. Duration ≤ ~60s
@@ -40,7 +46,7 @@ RSS provides neither, so enrich each new `videoId` once and cache the result:
 
 This scraping is the most fragile surface in the app. It runs server-side in the background
 after each refresh (`server/refresh.ts`), and the selectors live in `server/youtube.ts`.
-Some datacenter IP ranges get watch pages without `lengthSeconds`; durations then stay unknown.
+Live streams and premieres have no length badge; their duration stays unknown.
 
 ## Outbound safety
 Every request goes through one guard in `server/youtube.ts`: https only, hosts `youtube.com`,
